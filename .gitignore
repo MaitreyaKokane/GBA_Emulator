@@ -1,0 +1,38 @@
+# Build directories
+build/
+bin/
+lib/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+!CMakeLists.txt
+
+# IDE
+.vs/
+.vscode/
+*.user
+*.suo
+*.sln
+*.vcxproj
+*.vcxproj.filters
+
+# Executables
+*.exe
+*.out
+*.app
+
+# ROM files (keep separate)
+*.gba
+*.zip
+
+# OS
+.DS_Store
+Thumbs.db
+
+developer_notes.txt
+external
+
