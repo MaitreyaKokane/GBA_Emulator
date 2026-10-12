@@ -11,16 +11,16 @@
 ## To Implement
 
 ### 1. Memory System (Foundation)
-- [ ] Implement GBA memory map
-  - [ ] BIOS (0x00000000 - 0x00003FFF)
-  - [ ] EWRAM (0x02000000 - 0x0203FFFF)
-  - [ ] IWRAM (0x03000000 - 0x03007FFF)
-  - [ ] I/O Registers (0x04000000 - 0x040003FF)
-  - [ ] Palette RAM (0x05000000 - 0x050003FF)
-  - [ ] VRAM (0x06000000 - 0x06017FFF)
-  - [ ] OAM (0x07000000 - 0x070003FF)
-- [ ] Add read/write functions with proper address mapping
-- [ ] Handle memory regions and their access patterns
+- [x] Implement GBA memory map
+  - [x] BIOS (0x00000000 - 0x00003FFF)
+  - [x] EWRAM (0x02000000 - 0x0203FFFF)
+  - [x] IWRAM (0x03000000 - 0x03007FFF)
+  - [x] I/O Registers (0x04000000 - 0x040003FF)
+  - [x] Palette RAM (0x05000000 - 0x050003FF)
+  - [x] VRAM (0x06000000 - 0x06017FFF)
+  - [x] OAM (0x07000000 - 0x070003FF)
+- [x] Add read/write functions with proper address mapping
+- [x] Handle memory regions and their access patterns
 - [ ] Implement wait states for different memory regions
 
 ### 2. ARM7TDMI CPU (Core)
@@ -41,12 +41,12 @@
   - [ ] Undefined instruction
 
 ### 3. Cartridge Loading (Input)
-- [ ] Load .gba ROM files
-- [ ] Parse ROM header
-  - [ ] Title (0xA0-0xAB)
-  - [ ] Game code (0xB2-0xB5)
-  - [ ] Maker code (0xB6-0xB7)
-- [ ] Handle different ROM sizes
+- [x] Load .gba ROM files
+- [x] Parse ROM header
+  - [x] Title (0xA0-0xAB)
+  - [x] Game code (0xB2-0xB5)
+  - [x] Maker code (0xB6-0xB7)
+- [x] Handle different ROM sizes
 - [ ] Implement save game types
   - [ ] SRAM
   - [ ] Flash memory

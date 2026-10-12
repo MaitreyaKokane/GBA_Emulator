@@ -23,3 +23,164 @@
         // - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application, or clear/overwrite your copy of the keyboard data.
         // Generally you may always pass all inputs to dear imgui, and hide them from your application based on those two flags.
         // [If using SDL_MAIN_USE_CALLBACKS: call ImGui_ImplSDL3_ProcessEvent() from your SDL_AppEvent() function]
+
+================================================================================
+MEMORY WAIT STATES IMPLEMENTATION GUIDE
+================================================================================
+
+Overview
+--------
+Memory wait states represent the number of cycles the CPU must wait for memory
+to respond. The GBA has different access speeds for different memory regions,
+which is critical for accurate timing emulation.
+
+Key Concepts
+------------
+
+1. Access Types
+   - Non-sequential (N) access: First access to a memory region, or when
+     switching regions. Slower.
+   - Sequential (S) access: Subsequent accesses to the same region. Faster
+     (cache-like behavior).
+   - The CPU tracks the last accessed address to determine if the next access
+     is sequential.
+
+2. The WAITCNT Register (0x04000204)
+   This I/O register controls wait states for cartridge regions. It's 16-bit
+   with these fields:
+   - Bits 0-1: WS0 (ROM area 0) - controls wait states for 0x08000000-0x09FFFFFF
+   - Bits 2-3: WS1 (ROM area 1) - controls wait states for 0x0A000000-0x0BFFFFFF
+   - Bits 4-5: WS2 (ROM area 2) - controls wait states for 0x0C000000-0x0DFFFFFF
+   - Bit 6: SRAM wait state - controls 0x0E000000-0x0E00FFFF
+   - Bits 8-9: PHI terminal select - controls clock speed
+   - Bit 10: Prefetch enable - enables ROM prefetch buffer
+   - Bit 11: Game Pak type - determines ROM vs SRAM access patterns
+
+   Wait state values (0-3) map to cycle counts for non-sequential/sequential
+   accesses.
+
+Implementation Steps
+--------------------
+
+Step 1: Add Cycle Tracking to CPU
+   - Add a cycle counter variable to your ARM7TDMI class
+   - This counter increments with each instruction execution
+   - Each memory access will add wait state cycles to this counter
+   - The counter is used for timing-sensitive operations (timer, interrupts, etc.)
+
+Step 2: Create Wait State Lookup Tables
+   Define constants or lookup tables for each memory region:
+
+   Internal Memory (fixed timing):
+   - BIOS: 1 cycle (no wait states)
+   - IWRAM: 1 cycle (fastest)
+   - Palette RAM: 1 cycle
+   - OAM: 1 cycle
+   - VRAM: 1-2 cycles depending on mode (research exact timing)
+   - EWRAM: 3 cycles (non-sequential), 3 cycles (sequential)
+   - I/O Registers: Variable (some 1 cycle, some more)
+
+   Cartridge Regions (variable via WAITCNT):
+   - ROM areas 0, 1, 2: Timing depends on WAITCNT settings
+   - SRAM/Flash: Timing depends on WAITCNT bit 6
+
+Step 3: Track Sequential Access State
+   Add state to track the last memory access:
+   - Store the last accessed address (or memory region)
+   - Store the last access type (read/write)
+   - When a new access occurs, compare with last access:
+     * If same region and address is sequential (last + 2 or + 4), use
+       sequential timing
+     * Otherwise, use non-sequential timing
+   - Update the state after each access
+
+Step 4: Implement WAITCNT Register
+   In your I/O register handling:
+   - Add the WAITCNT register to your io_Registers array
+   - Implement read/write logic for address 0x04000204
+   - On write, validate and store the new wait state configuration
+   - On read, return the current configuration
+   - Note: Some bits are read-only or have special behavior
+
+Step 5: Modify Memory Read/Write Functions
+   Update your read8, read16, read32, write8, write16, write32 functions:
+
+   For each access:
+   1. Determine the memory region from the address
+   2. Check if this is a sequential or non-sequential access
+   3. Look up the wait state cycles for this region and access type
+   4. Add the wait state cycles to the CPU cycle counter
+   5. Update the sequential access state
+
+   Special considerations:
+   - 32-bit accesses: May need to be treated as two 16-bit accesses or have
+     their own timing
+   - Misaligned accesses: May incur extra cycles or exceptions
+   - Cartridge prefetch: If enabled, can reduce wait states for sequential ROM
+     accesses
+
+Step 6: Implement ROM Prefetch Buffer (Optional but Important)
+   The GBA has a prefetch buffer that caches ROM data:
+   - When prefetch is enabled (WAITCNT bit 10), sequential ROM accesses can be
+     faster
+   - The buffer holds 8 bytes (2 words) of prefetched data
+   - Implement buffer state: valid flag, address, data
+   - On ROM read, check if data is in buffer (fast hit)
+   - On miss, prefetch the next sequential data
+   - Flush buffer on non-sequential access or when changing regions
+
+Step 7: Handle DMA Wait States
+   DMA transfers also respect wait states:
+   - When implementing DMA, calculate total cycles = data size × wait state
+     cycles
+   - Add these cycles to the DMA timing
+   - DMA accesses are typically non-sequential unless DMA does sequential
+     transfers
+
+Step 8: Add Timing Debugging
+   For testing and debugging:
+   - Add logging for wait state calculations
+   - Log when wait states are applied and for which region
+   - Create a way to display cycle counts in your debugger UI
+   - Test with timing-sensitive homebrew ROMs
+
+Memory Region Timing Reference
+------------------------------
+Research these exact values from GBA documentation:
+
+| Region          | Address Range        | Non-Seq Cycles | Seq Cycles |
+|-----------------|----------------------|----------------|------------|
+| BIOS            | 0x00000000-0x00003FFF| 1              | 1          |
+| EWRAM           | 0x02000000-0x0203FFFF| 3              | 3          |
+| IWRAM           | 0x03000000-0x03007FFF| 1              | 1          |
+| I/O             | 0x04000000-0x040003FF| Variable       | Variable   |
+| Palette         | 0x05000000-0x050003FF| 1              | 1          |
+| VRAM            | 0x06000000-0x06017FFF| 1-2            | 1-2        |
+| OAM             | 0x07000000-0x070003FF| 1              | 1          |
+| ROM WS0         | 0x08000000-0x09FFFFFF| Configurable   | Configurable|
+| ROM WS1         | 0x0A000000-0x0BFFFFFF| Configurable   | Configurable|
+| ROM WS2         | 0x0C000000-0x0DFFFFFF| Configurable   | Configurable|
+| SRAM            | 0x0E000000-0x0E00FFFF| Configurable   | Configurable|
+
+Testing Strategy
+----------------
+1. Start with internal memory regions (fixed timing)
+2. Test with simple programs that read memory in loops
+3. Implement WAITCNT register and verify it changes timing
+4. Add cartridge region timing
+5. Test with timing-sensitive test ROMs
+6. Verify prefetch buffer behavior
+7. Profile cycle counts against real hardware
+
+Common Pitfalls
+---------------
+- Forgetting to update sequential state after each access
+- Not handling the difference between 8-bit, 16-bit, and 32-bit accesses
+- Incorrectly implementing the WAITCNT register bit fields
+- Not flushing prefetch buffer at the right times
+- Misaligned accesses causing incorrect timing
+- Not accounting for that some I/O registers have different timing than others
+
+This implementation is crucial for accurate emulation, as many games rely on
+precise timing for synchronization, audio, and graphics effects.
+================================================================================
